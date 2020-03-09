@@ -13,7 +13,7 @@ class Flatten(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None):
+    def __init__(self, obs_shape, action_space, agent_num, agent_i, base=None, base_kwargs=None):
         super(Policy, self).__init__()
         if base_kwargs is None:
             base_kwargs = {}
@@ -25,8 +25,10 @@ class Policy(nn.Module):
             else:
                 raise NotImplementedError
 
-        self.base = base(obs_shape[0], **base_kwargs)
-
+        # self.base = base(obs_shape[0], **base_kwargs)
+        # actor输入维度num_state，critic输入num_state*agent_num
+        self.base = base(obs_shape[0], agent_num, **base_kwargs)
+        #import pdb; pdb.set_trace()
         if action_space.__class__.__name__ == "Discrete":
             num_outputs = action_space.n
             self.dist = Categorical(self.base.output_size, num_outputs)
@@ -51,10 +53,9 @@ class Policy(nn.Module):
     def forward(self, inputs, rnn_hxs, masks):
         raise NotImplementedError
 
-    def act(self, inputs, rnn_hxs, masks, deterministic=False):
-        value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
+    def act(self, share_inputs, inputs, rnn_hxs, masks, deterministic=False):
+        value, actor_features, rnn_hxs = self.base(share_inputs, inputs, rnn_hxs, masks)
         dist = self.dist(actor_features)
-
         if deterministic:
             action = dist.mode()
         else:
@@ -65,12 +66,12 @@ class Policy(nn.Module):
 
         return value, action, action_log_probs, rnn_hxs
 
-    def get_value(self, inputs, rnn_hxs, masks):
-        value, _, _ = self.base(inputs, rnn_hxs, masks)
+    def get_value(self, share_inputs, inputs, rnn_hxs, masks):
+        value, _, _ = self.base(share_inputs, inputs, rnn_hxs, masks)
         return value
 
-    def evaluate_actions(self, inputs, rnn_hxs, masks, action):
-        value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
+    def evaluate_actions(self, share_inputs, inputs, rnn_hxs, masks, action):
+        value, actor_features, rnn_hxs = self.base(share_inputs, inputs, rnn_hxs, masks)
         dist = self.dist(actor_features)
 
         action_log_probs = dist.log_probs(action)
@@ -196,7 +197,7 @@ class CNNBase(NNBase):
 
 
 class MLPBase(NNBase):
-    def __init__(self, num_inputs, recurrent=False, hidden_size=64):
+    def __init__(self, num_inputs, agent_num, recurrent=False, hidden_size=64):
         super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         if recurrent:
@@ -210,20 +211,21 @@ class MLPBase(NNBase):
             init_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
 
         self.critic = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
+            init_(nn.Linear(num_inputs * agent_num, hidden_size)), nn.Tanh(),
             init_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
 
         self.critic_linear = init_(nn.Linear(hidden_size, 1))
 
         self.train()
 
-    def forward(self, inputs, rnn_hxs, masks):
-        x = inputs
+    def forward(self, share_inputs, inputs, rnn_hxs, masks):
+        share_obs = share_inputs
+        obs = inputs
 
-        if self.is_recurrent:
-            x, rnn_hxs = self._forward_gru(x, rnn_hxs, masks)
+        #if self.is_recurrent:
+        #    x, rnn_hxs = self._forward_gru(x, rnn_hxs, masks)
 
-        hidden_critic = self.critic(x)
-        hidden_actor = self.actor(x)
+        hidden_critic = self.critic(share_inputs)
+        hidden_actor = self.actor(inputs)
 
         return self.critic_linear(hidden_critic), hidden_actor, rnn_hxs

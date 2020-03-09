@@ -2,11 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from tensorboardX import SummaryWriter
 
 
 class PPO():
     def __init__(self,
                  actor_critic,
+                 agent_i,
                  clip_param,
                  ppo_epoch,
                  num_mini_batch,
@@ -15,10 +17,12 @@ class PPO():
                  lr=None,
                  eps=None,
                  max_grad_norm=None,
+                 model_dir=None,
                  use_clipped_value_loss=True):
 
         self.actor_critic = actor_critic
 
+        self.agent_i = agent_i
         self.clip_param = clip_param
         self.ppo_epoch = ppo_epoch
         self.num_mini_batch = num_mini_batch
@@ -31,11 +35,15 @@ class PPO():
 
         self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
 
+        self.training_step = 0
+        self.writer = SummaryWriter("/home/chenjy/pytorch-a2c-ppo-acktr-gail/logs"+model_dir)
+        
+
     def update(self, rollouts):
         advantages = rollouts.returns[:-1] - rollouts.value_preds[:-1]
+        #print(rollouts.rewards.mean())
         advantages = (advantages - advantages.mean()) / (
             advantages.std() + 1e-5)
-
         value_loss_epoch = 0
         action_loss_epoch = 0
         dist_entropy_epoch = 0
@@ -47,17 +55,16 @@ class PPO():
             else:
                 data_generator = rollouts.feed_forward_generator(
                     advantages, self.num_mini_batch)
-
             for sample in data_generator:
-                obs_batch, recurrent_hidden_states_batch, actions_batch, \
+                share_obs_batch, obs_batch, recurrent_hidden_states_batch, actions_batch, \
                    value_preds_batch, return_batch, masks_batch, old_action_log_probs_batch, \
                         adv_targ = sample
 
                 # Reshape to do in a single forward pass for all steps
                 values, action_log_probs, dist_entropy, _ = self.actor_critic.evaluate_actions(
+                    share_obs_batch,
                     obs_batch, recurrent_hidden_states_batch, masks_batch,
                     actions_batch)
-
                 ratio = torch.exp(action_log_probs -
                                   old_action_log_probs_batch)
                 surr1 = ratio * adv_targ
@@ -86,11 +93,23 @@ class PPO():
                 value_loss_epoch += value_loss.item()
                 action_loss_epoch += action_loss.item()
                 dist_entropy_epoch += dist_entropy.item()
+                self.training_step += 1
+                self.writer.add_scalars('agent%i/mean_episode_reward' % self.agent_i,
+                    {'reward': rollouts.rewards.mean()},
+                    self.training_step)
+                if((self.training_step+1) % 100 == 0):
+                    print(rollouts.rewards.mean())
 
         num_updates = self.ppo_epoch * self.num_mini_batch
+
+        self.writer.add_scalars('agent%i/mean_episode_reward' % self.agent_i,
+                    {'reward': rollouts.rewards.mean()},
+                    self.training_step)
 
         value_loss_epoch /= num_updates
         action_loss_epoch /= num_updates
         dist_entropy_epoch /= num_updates
+        #print(self.training_step)
+        #import pdb; pdb.set_trace()
 
         return value_loss_epoch, action_loss_epoch, dist_entropy_epoch

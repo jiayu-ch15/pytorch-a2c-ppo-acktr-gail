@@ -1,0 +1,1 @@
+python main.py --env-name "simple_spread" --model_dir '/run4_lambda99_5' --save-interval 500 --algo ppo --use-gae --lr 2e-3 --clip-param 0.2 --value-loss-coef 0.8 --num-processes 80 --num-steps 30 --num-mini-batch 2 --log-interval 1 --entropy-coef 0.01 --agent_num 4 --ppo-epoch 15 --gae-lambda 0.99 --seed 2

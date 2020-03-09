@@ -8,7 +8,8 @@ def _flatten_helper(T, N, _tensor):
 
 class RolloutStorage(object):
     def __init__(self, num_steps, num_processes, obs_shape, action_space,
-                 recurrent_hidden_state_size):
+                 recurrent_hidden_state_size, agent_num, agent_i):
+        self.share_obs = torch.zeros(num_steps + 1, num_processes, obs_shape[0] * agent_num)   
         self.obs = torch.zeros(num_steps + 1, num_processes, *obs_shape)
         self.recurrent_hidden_states = torch.zeros(
             num_steps + 1, num_processes, recurrent_hidden_state_size)
@@ -31,8 +32,10 @@ class RolloutStorage(object):
 
         self.num_steps = num_steps
         self.step = 0
+        self.agent_i = agent_i
 
     def to(self, device):
+        self.share_obs = self.share_obs.to(device)
         self.obs = self.obs.to(device)
         self.recurrent_hidden_states = self.recurrent_hidden_states.to(device)
         self.rewards = self.rewards.to(device)
@@ -43,8 +46,9 @@ class RolloutStorage(object):
         self.masks = self.masks.to(device)
         self.bad_masks = self.bad_masks.to(device)
 
-    def insert(self, obs, recurrent_hidden_states, actions, action_log_probs,
+    def insert(self, share_obs, obs, recurrent_hidden_states, actions, action_log_probs,
                value_preds, rewards, masks, bad_masks):
+        self.share_obs[self.step + 1].copy_(share_obs)       
         self.obs[self.step + 1].copy_(obs)
         self.recurrent_hidden_states[self.step +
                                      1].copy_(recurrent_hidden_states)
@@ -110,7 +114,6 @@ class RolloutStorage(object):
                                mini_batch_size=None):
         num_steps, num_processes = self.rewards.size()[0:2]
         batch_size = num_processes * num_steps
-
         if mini_batch_size is None:
             assert batch_size >= num_mini_batch, (
                 "PPO requires the number of processes ({}) "
@@ -124,6 +127,7 @@ class RolloutStorage(object):
             mini_batch_size,
             drop_last=True)
         for indices in sampler:
+            share_obs_batch = self.share_obs[:-1].view(-1, *self.share_obs.size()[2:])[indices]
             obs_batch = self.obs[:-1].view(-1, *self.obs.size()[2:])[indices]
             recurrent_hidden_states_batch = self.recurrent_hidden_states[:-1].view(
                 -1, self.recurrent_hidden_states.size(-1))[indices]
@@ -139,7 +143,7 @@ class RolloutStorage(object):
             else:
                 adv_targ = advantages.view(-1, 1)[indices]
 
-            yield obs_batch, recurrent_hidden_states_batch, actions_batch, \
+            yield share_obs_batch, obs_batch, recurrent_hidden_states_batch, actions_batch, \
                 value_preds_batch, return_batch, masks_batch, old_action_log_probs_batch, adv_targ
 
     def recurrent_generator(self, advantages, num_mini_batch):

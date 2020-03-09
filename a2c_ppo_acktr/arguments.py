@@ -6,6 +6,8 @@ import torch
 def get_args():
     parser = argparse.ArgumentParser(description='RL')
     parser.add_argument(
+        '--model_dir', default='/run', help='model directory')
+    parser.add_argument(
         '--algo', default='a2c', help='algorithm to use: a2c | ppo | acktr')
     parser.add_argument(
         '--gail',
@@ -149,6 +151,11 @@ def get_args():
         action='store_true',
         default=False,
         help='use a linear schedule on the learning rate')
+    parser.add_argument(
+        '--agent_num',
+        type=int,
+        default=3,
+        help='number of agent num (default: 3)')
     args = parser.parse_args()
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
