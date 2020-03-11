@@ -1,1 +1,1 @@
-python PPO_evaluate.py --model_dir '/run5_lambda99' --agent_num 5
+python PPO_evaluate.py --model_dir '/run5_lambda99_long' --agent_num 5

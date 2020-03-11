@@ -55,6 +55,7 @@ class Policy(nn.Module):
 
     def act(self, share_inputs, inputs, rnn_hxs, masks, deterministic=False):
         value, actor_features, rnn_hxs = self.base(share_inputs, inputs, rnn_hxs, masks)
+        # import pdb; pdb.set_trace()
         dist = self.dist(actor_features)
         if deterministic:
             action = dist.mode()

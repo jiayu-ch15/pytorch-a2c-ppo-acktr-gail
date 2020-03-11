@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from tensorboardX import SummaryWriter
+import pdb
 
 
 class PPO():
@@ -44,6 +45,7 @@ class PPO():
         #print(rollouts.rewards.mean())
         advantages = (advantages - advantages.mean()) / (
             advantages.std() + 1e-5)
+        # pdb.set_trace()
         value_loss_epoch = 0
         action_loss_epoch = 0
         dist_entropy_epoch = 0
@@ -59,6 +61,7 @@ class PPO():
                 share_obs_batch, obs_batch, recurrent_hidden_states_batch, actions_batch, \
                    value_preds_batch, return_batch, masks_batch, old_action_log_probs_batch, \
                         adv_targ = sample
+                # pdb.set_trace()
 
                 # Reshape to do in a single forward pass for all steps
                 values, action_log_probs, dist_entropy, _ = self.actor_critic.evaluate_actions(
@@ -71,6 +74,7 @@ class PPO():
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_param,
                                     1.0 + self.clip_param) * adv_targ
                 action_loss = -torch.min(surr1, surr2).mean()
+                # pdb.set_trace()
 
                 if self.use_clipped_value_loss:
                     value_pred_clipped = value_preds_batch + \
@@ -86,6 +90,7 @@ class PPO():
                 self.optimizer.zero_grad()
                 (value_loss * self.value_loss_coef + action_loss -
                  dist_entropy * self.entropy_coef).backward()
+                # pdb.set_trace()
                 nn.utils.clip_grad_norm_(self.actor_critic.parameters(),
                                          self.max_grad_norm)
                 self.optimizer.step()
@@ -97,8 +102,10 @@ class PPO():
                 self.writer.add_scalars('agent%i/mean_episode_reward' % self.agent_i,
                     {'reward': rollouts.rewards.mean()},
                     self.training_step)
-                if((self.training_step+1) % 100 == 0):
-                    print(rollouts.rewards.mean())
+                # if((self.training_step+1) % 100 == 0):
+                #     print(rollouts.rewards.mean())
+                if((self.training_step+1) % 100 == 0 and self.agent_i == 0):
+                    print("training_steps: " + str(self.training_step+1) + " mean rewards: " + str(rollouts.rewards.mean()))
 
         num_updates = self.ppo_epoch * self.num_mini_batch
 
@@ -106,6 +113,7 @@ class PPO():
                     {'reward': rollouts.rewards.mean()},
                     self.training_step)
 
+        # pdb.set_trace()
         value_loss_epoch /= num_updates
         action_loss_epoch /= num_updates
         dist_entropy_epoch /= num_updates

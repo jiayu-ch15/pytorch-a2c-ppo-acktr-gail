@@ -29,11 +29,13 @@ def make_parallel_env(env_id, n_rollout_threads, seed, discrete_action):
             env = make_env(env_id, discrete_action=discrete_action)
             env.seed(seed + rank * 1000)
             np.random.seed(seed + rank * 1000)
+            # pdb.set_trace()
             return env
         return init_env
     if n_rollout_threads == 1:
         return DummyVecEnv([get_env_fn(0)])
     else:
+        # pdb.set_trace()
         return SubprocVecEnv([get_env_fn(i) for i in range(n_rollout_threads)])
 
 
@@ -156,6 +158,7 @@ def main():
         rollouts.append(rollout)
 
     obs = envs.reset()
+    # pdb.set_trace()
     
     for i in range(args.agent_num):
         rollouts[i].share_obs[0].copy_(torch.tensor(obs.reshape(args.num_processes, -1)))
@@ -171,9 +174,8 @@ def main():
         #pdb.set_trace()
         if args.use_linear_lr_decay:
             # decrease learning rate linearly
-            utils.update_linear_schedule(
-                agent.optimizer, j, num_updates,
-                agent.optimizer.lr if args.algo == "acktr" else args.lr)
+            for i in range(args.agent_num):
+                utils.update_linear_schedule(agent[i].optimizer, j, num_updates, agent[i].optimizer.lr if args.algo == "acktr" else args.lr)
 
         for step in range(args.num_steps):
             # Sample actions
@@ -185,7 +187,7 @@ def main():
                         rollouts[i].share_obs[step],
                         rollouts[i].obs[step], rollouts[i].recurrent_hidden_states[step],
                         rollouts[i].masks[step])
-                    #import pdb; pdb.set_trace()
+                    # import pdb; pdb.set_trace()
                     value_list.append(value)
                     action_list.append(action)
                     action_log_prob_list.append(action_log_prob)
@@ -202,6 +204,8 @@ def main():
             #start = time.time()
             #pdb.set_trace()            
             obs, reward, done, infos = envs.step(action)
+            # print(obs[0][0])
+            # pdb.set_trace()
             #end = time.time()
             #print("step time: ", end-start)
             for info in infos:
@@ -259,9 +263,14 @@ def main():
         #import pdb; pdb.set_trace()
         for i in range(args.agent_num):
             value_loss, action_loss, dist_entropy = agent[i].update(rollouts[i])
+            if (i == 0):
+                print("value loss: " + str(value_loss))
+        # print(value_loss)
+            # pdb.set_trace()
 
         #rollouts.after_update()
         obs = envs.reset()
+        # pdb.set_trace()
         for i in range(args.agent_num):
             rollouts[i].share_obs[0].copy_(torch.tensor(obs.reshape(args.num_processes, -1)))
             rollouts[i].obs[0].copy_(torch.tensor(obs[:,i,:]))
